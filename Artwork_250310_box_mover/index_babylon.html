@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Box Mover</title>
+    <style>
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        canvas { width: 100%; height: 100%; touch-action: none; }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+
+    <!-- Babylon.js CDN -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylon.gridMaterial.min.js"></script>
+
+    <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+
+        const createScene = function () {
+            const scene = new BABYLON.Scene(engine);
+
+            // ✅ FollowCamera 복원
+            const camera = new BABYLON.FollowCamera("FollowCam", new BABYLON.Vector3(0, 10, -20), scene);
+            camera.radius = 30;             // 카메라 거리
+            camera.heightOffset = 10;       // 높이
+            camera.rotationOffset = 0;      // 각도
+            camera.cameraAcceleration = 0.05;
+            camera.maxCameraSpeed = 20;
+
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+
+            // ✅ 박스 시작 위치 bigBox1과 동일
+            const box = BABYLON.MeshBuilder.CreateBox("box", { size: 2 }, scene);
+            box.position = new BABYLON.Vector3(-100, 4, -100); // bigBox1 위치와 동일
+
+            const boxMat = new BABYLON.StandardMaterial("boxMat", scene);
+            boxMat.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.8);
+            box.material = boxMat;
+
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 200, height: 200 }, scene);
+            const groundMaterial = new BABYLON.GridMaterial("groundMat", scene);
+            groundMaterial.majorUnitFrequency = 1;
+            groundMaterial.minorUnitVisibility = 0.45;
+            groundMaterial.gridRatio = 2;
+            groundMaterial.backFaceCulling = false;
+            groundMaterial.mainColor = new BABYLON.Color3(1, 1, 1);
+            groundMaterial.lineColor = new BABYLON.Color3(0.7, 0.7, 0.7);
+            ground.material = groundMaterial;
+
+            // ✅ 카메라가 박스를 따라가게 고정
+            camera.lockedTarget = box;
+
+            let inputMap = {};
+            scene.actionManager = new BABYLON.ActionManager(scene);
+
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
+                inputMap[evt.sourceEvent.key.toLowerCase()] = evt.sourceEvent.type == "keydown";
+            }));
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
+                inputMap[evt.sourceEvent.key.toLowerCase()] = evt.sourceEvent.type == "keydown";
+            }));
+
+            const speed = 0.2;
+            const gravity = -0.01;
+            const jumpPower = 0.3;
+            let jumpVelocity = 0;
+            let isJumping = false;
+
+            // ✅ BIG BOX 생성
+            const bigBoxMat = new BABYLON.StandardMaterial("bigBoxMat", scene);
+            bigBoxMat.diffuseColor = new BABYLON.Color3(0.55, 0, 0.55); // Dark Magenta
+
+            const bigBox1 = BABYLON.MeshBuilder.CreateBox("bigBox1", { size: 8 }, scene);
+            bigBox1.position = new BABYLON.Vector3(-100, 4, -100);
+            bigBox1.material = bigBoxMat;
+
+            const bigBox2 = BABYLON.MeshBuilder.CreateBox("bigBox2", { size: 8 }, scene);
+            bigBox2.position = new BABYLON.Vector3(100, 4, 100);
+            bigBox2.material = bigBoxMat;
+
+            // ✅ 콘 생성
+            const coneCount = 100;
+            const cones = [];
+            const coneSpeeds = [];
+            const coneDirections = [];
+
+            for (let i = 0; i < coneCount; i++) {
+                const cone = BABYLON.MeshBuilder.CreateCylinder(`cone_${i}`, {
+                    diameterTop: 0,
+                    diameterBottom: 1,
+                    height: 2,
+                    tessellation: 8
+                }, scene);
+
+                cone.position = new BABYLON.Vector3(
+                    Math.random() * 100 - 50,
+                    1,
+                    Math.random() * 100 - 50
+                );
+
+                const coneMat = new BABYLON.StandardMaterial(`coneMat_${i}`, scene);
+                coneMat.diffuseColor = new BABYLON.Color3(
+                    Math.random(),
+                    Math.random(),
+                    Math.random()
+                );
+                cone.material = coneMat;
+
+                cones.push(cone);
+
+                const speed = Math.random() * 0.1 + 0.05;
+                coneSpeeds.push(speed);
+
+                const direction = new BABYLON.Vector3(
+                    Math.random() * 2 - 1,
+                    0,
+                    Math.random() * 2 - 1
+                ).normalize();
+
+                coneDirections.push(direction);
+            }
+
+            const coneBoundary = 100;
+
+            scene.onBeforeRenderObservable.add(() => {
+                let forward = new BABYLON.Vector3(
+                    Math.sin(box.rotation.y),
+                    0,
+                    Math.cos(box.rotation.y)
+                );
+                let right = new BABYLON.Vector3(
+                    Math.sin(box.rotation.y + Math.PI / 2),
+                    0,
+                    Math.cos(box.rotation.y + Math.PI / 2)
+                );
+
+                if (inputMap["w"]) {
+                    box.position.addInPlace(forward.scale(-speed));
+                }
+                if (inputMap["s"]) {
+                    box.position.addInPlace(forward.scale(speed));
+                }
+                if (inputMap["a"]) {
+                    box.rotation.y -= 0.05;
+                }
+                if (inputMap["d"]) {
+                    box.rotation.y += 0.05;
+                }
+
+                if (inputMap[" "] && !isJumping) {
+                    isJumping = true;
+                    jumpVelocity = jumpPower;
+                }
+
+                if (isJumping) {
+                    box.position.y += jumpVelocity;
+                    jumpVelocity += gravity;
+
+                    if (box.position.y <= 1) {
+                        box.position.y = 1;
+                        isJumping = false;
+                        jumpVelocity = 0;
+                    }
+                }
+
+                // 콘 이동 처리
+                for (let i = 0; i < coneCount; i++) {
+                    const cone = cones[i];
+                    const speed = coneSpeeds[i];
+                    const dir = coneDirections[i];
+
+                    cone.position.addInPlace(dir.scale(speed));
+
+                    if (Math.abs(cone.position.x) > coneBoundary) {
+                        dir.x *= -1;
+                        cone.position.x = BABYLON.Scalar.Clamp(cone.position.x, -coneBoundary, coneBoundary);
+                    }
+
+                    if (Math.abs(cone.position.z) > coneBoundary) {
+                        dir.z *= -1;
+                        cone.position.z = BABYLON.Scalar.Clamp(cone.position.z, -coneBoundary, coneBoundary);
+                    }
+
+                    cone.rotation.y += 0.02;
+                }
+            });
+
+            return scene;
+        };
+
+        const scene = createScene();
+
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>

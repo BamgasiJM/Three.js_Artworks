@@ -1,0 +1,15 @@
+body {
+    margin: 0;
+    overflow: hidden;
+}
+#jumpText {
+    position: absolute;
+    top: 26%;  /* 화면 상단에서 10% 위치 */
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Arial', sans-serif;
+    font-size: 40px;
+    font-weight: bold;
+    color: white;
+    z-index: 10; /* 텍스트가 3D 씬 위에 나타나도록 설정 */
+}
