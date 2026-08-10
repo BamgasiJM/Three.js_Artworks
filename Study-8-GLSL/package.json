@@ -1,0 +1,21 @@
+{
+  "name": "study-8-glsl",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "three": "^0.171.0",
+    "vite": "^6.0.5"
+  },
+  "devDependencies": {
+    "vite-plugin-glsl": "^1.3.1"
+  }
+}

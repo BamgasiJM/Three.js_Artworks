@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Level Particle Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* CSS 통합 */
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: Arial, sans-serif; }
+        #webgl-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* 웹캠 비디오를 화면 우측 하단에 작게 표시 */
+        #webcam-video { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            width: 160px; 
+            
+            height: 120px; 
+            border: 2px solid #fff;
+            z-index: 10; 
+            display: block; 
+            transform: scaleX(-1);
+        }
+        
+        #motion-canvas { display: none; }
+        
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            color: #ccc;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="webgl-container"></div>
+    <video id="webcam-video" autoplay></video>
+    <canvas id="motion-canvas"></canvas>
+    <div id="info">Webcam Status: Loading...</div>
+
+    <script>
+        // ==========================================================
+        // 🛠️ 전역 상수 및 설정 변수
+        // ==========================================================
+        
+        const WINDOW_WIDTH = window.innerWidth;
+        const WINDOW_HEIGHT = window.innerHeight;
+
+        const VIDEO_WIDTH = 320; 
+        const VIDEO_HEIGHT = 180; 
+        const TOTAL_PARTICLES = VIDEO_WIDTH * VIDEO_HEIGHT;
+
+        const WORLD_WIDTH = 800; 
+        const WORLD_HEIGHT = WORLD_WIDTH * (VIDEO_HEIGHT / VIDEO_WIDTH);
+
+        // --- 시뮬레이션 설정 ---
+        const REPULSION_FORCE_STRENGTH = 50; 
+        const Z_TURBULENCE_FACTOR = 0.5;
+        const SPRING_STRENGTH = 0.03; 
+        const DAMPING_FACTOR = 0.86; 
+        const MAX_VELOCITY = 20; 
+
+        let camera, scene, renderer;
+        let particleGeometry, particleMaterial, particleSystem;
+        let video, videoCanvas, videoContext;
+        let infoElement;
+        
+        const particles = []; 
+        let lastBrightnessData = null; 
+
+        // ==========================================================
+        // 0. 헬퍼 함수
+        // ==========================================================
+
+        /**
+         * 부드러운 원형 모양의 텍스처를 생성합니다.
+         */
+        function createCircleTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, 
+                canvas.height / 2, 
+                0, 
+                canvas.width / 2, 
+                canvas.height / 2, 
+                canvas.width / 2
+            );
+            
+            // 중앙은 불투명한 흰색, 바깥으로 갈수록 투명해지도록 설정
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
+            gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.2)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+
+        // ==========================================================
+        // 1. 초기화 함수
+        // ==========================================================
+
+        function init() {
+            infoElement = document.getElementById('info');
+            scene = new THREE.Scene();
+            
+            camera = new THREE.PerspectiveCamera(35, WINDOW_WIDTH / WINDOW_HEIGHT, 1, 2000);
+            
+            camera.position.z = WORLD_WIDTH * 1.0; 
+            camera.position.y = 0;
+            camera.lookAt(0, 0, 0); 
+            scene.rotation.z = Math.PI; 
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+            document.getElementById('webgl-container').appendChild(renderer.domElement);
+
+            particleGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(TOTAL_PARTICLES * 3); 
+            const colors = new Float32Array(TOTAL_PARTICLES * 3); 
+            
+            for (let i = 0; i < TOTAL_PARTICLES; i++) {
+                const i3 = i * 3;
+                
+                const x = (i % VIDEO_WIDTH) / VIDEO_WIDTH - 0.5;
+                const y = Math.floor(i / VIDEO_WIDTH) / VIDEO_HEIGHT - 0.5;
+                
+                const initialPos = new THREE.Vector3(x * WORLD_WIDTH, y * WORLD_HEIGHT, 0);
+
+                positions[i3] = initialPos.x;
+                positions[i3 + 1] = initialPos.y;
+                positions[i3 + 2] = initialPos.z;
+                
+                colors[i3] = 1.0;
+                colors[i3 + 1] = 1.0;
+                colors[i3 + 2] = 1.0;
+
+                particles.push({
+                    position: initialPos.clone(),
+                    velocity: new THREE.Vector3(0, 0, 0),
+                    initialPosition: initialPos.clone()
+                });
+            }
+
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+
+            // [핵심 수정 부분]
+            const circleTexture = createCircleTexture();
+            
+            particleMaterial = new THREE.PointsMaterial({
+                size: 8, 
+                vertexColors: true, 
+                blending: THREE.AdditiveBlending, 
+                transparent: true,
+                opacity: 1.0,
+                // 서클 텍스처 적용
+                map: circleTexture, 
+            });
+
+            particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(particleSystem);
+
+            video = document.getElementById('webcam-video');
+            video.width = VIDEO_WIDTH;
+            video.height = VIDEO_HEIGHT;
+
+            videoCanvas = document.getElementById('motion-canvas');
+            videoCanvas.width = VIDEO_WIDTH;
+            videoCanvas.height = VIDEO_HEIGHT;
+            videoContext = videoCanvas.getContext('2d');
+
+            startWebcam();
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function startWebcam() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const constraints = { 
+                    video: { 
+                        width: { exact: VIDEO_WIDTH }, 
+                        height: { exact: VIDEO_HEIGHT },
+                        facingMode: "environment"
+                    } 
+                };
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        video.srcObject = stream;
+                        video.onloadedmetadata = () => {
+                            video.play();
+                            infoElement.textContent = `Webcam Active. Resolution: ${VIDEO_WIDTH}x${VIDEO_HEIGHT}, World Size: ${WORLD_WIDTH}x${WORLD_HEIGHT}`;
+                            animate(); 
+                        };
+                    })
+                    .catch(err => {
+                        console.error("웹캠 접근 오류: ", err);
+                        infoElement.textContent = "Webcam Status: Error - Check Permissions";
+                    });
+            } else {
+                infoElement.textContent = "Webcam Status: Browser Not Supported";
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+
+        // ==========================================================
+        // 2. 파티클 시뮬레이션 및 업데이트
+        // ==========================================================
+        
+        function updateParticles() {
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            videoContext.drawImage(video, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+            const currentFrame = videoContext.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+            const currentData = currentFrame.data;
+            const currentBrightness = new Float32Array(TOTAL_PARTICLES);
+
+            for (let i = 0; i < TOTAL_PARTICLES; i++) {
+                const pixelIndex = i * 4; 
+                const avgBrightness = (currentData[pixelIndex] + currentData[pixelIndex + 1] + currentData[pixelIndex + 2]) / 3;
+                currentBrightness[i] = avgBrightness / 255.0; 
+            }
+            
+            if (lastBrightnessData === null) {
+                lastBrightnessData = currentBrightness;
+                return;
+            }
+
+            const positions = particleGeometry.attributes.position.array;
+
+            for (let i = 0; i < TOTAL_PARTICLES; i++) {
+                const particle = particles[i];
+                const i3 = i * 3;
+                
+                let totalForce = new THREE.Vector3(0, 0, 0);
+
+                const brightnessChange = lastBrightnessData[i] - currentBrightness[i]; 
+                
+                if (Math.abs(brightnessChange) > 0.03) { 
+                    const forceMagnitude = Math.abs(brightnessChange) * REPULSION_FORCE_STRENGTH; 
+                    
+                    const angle = Math.random() * Math.PI * 2;
+                    const repulsionForce = new THREE.Vector3(
+                        Math.cos(angle) * forceMagnitude,
+                        Math.sin(angle) * forceMagnitude,
+                        (Math.random() - 0.5) * forceMagnitude * Z_TURBULENCE_FACTOR
+                    ); 
+                    totalForce.add(repulsionForce);
+                }
+
+                const displacement = particle.initialPosition.clone().sub(particle.position);
+                const springForce = displacement.multiplyScalar(SPRING_STRENGTH);
+                totalForce.add(springForce);
+
+                
+                particle.velocity.add(totalForce);
+                particle.velocity.multiplyScalar(DAMPING_FACTOR);
+
+                if (particle.velocity.length() > MAX_VELOCITY) {
+                    particle.velocity.setLength(MAX_VELOCITY);
+                }
+
+                particle.position.add(particle.velocity);
+                
+                positions[i3] = particle.position.x;
+                positions[i3 + 1] = particle.position.y;
+                positions[i3 + 2] = particle.position.z;
+            }
+
+            lastBrightnessData.set(currentBrightness); 
+            
+            particleGeometry.attributes.position.needsUpdate = true;
+        }
+
+
+        // ==========================================================
+        // 3. 애니메이션 루프 및 실행
+        // ==========================================================
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateParticles();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>

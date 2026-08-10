@@ -1,0 +1,71 @@
+/*구글폰트에서 폰트 임포트*/
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+/*페이지 전체 백그라운드 컬러*/
+* {
+    background: #005172;
+/*    outline: none;
+    margin: 0;*/
+}
+
+/*h에 폰트 적용*/
+h1 {
+    font-size: 70px;
+    font-family: "Poppins", sans-serif;
+    color: #05b5bb;
+    font-weight: 600;
+    font-style: normal;
+    line-height: 100px;
+}
+
+h2 {
+    font-size: 40px;
+    font-family: "Poppins", sans-serif;
+    font-weight: 700;
+    font-style: normal;
+}
+
+h3 {
+    font-size: 30px;
+    color: #000000;
+    font-family: "Poppins", sans-serif;
+    font-weight: 300;
+    font-style: normal;
+}
+
+h4 {
+    text-decoration: none;
+    font-size: 25px;
+    color: #f6a2a2;
+    font-family: "Poppins", sans-serif;
+    font-weight: 300;
+    font-style: normal;
+    line-height: 25px;
+}
+
+
+ol {
+    font-size: 20px;
+    font-family: "Poppins", sans-serif;
+    font-weight: 500;
+    font-style: normal;
+    line-height: 30px;
+}
+
+ul, li {
+    font-size: 15px;
+    font-family: "Poppins", sans-serif;
+    font-weight: 500;
+    font-style: normal;
+    line-height: 16px;
+}
+
+
+p {
+    font-size: 25px;
+    font-family: "Poppins", sans-serif;
+    font-weight: 200;
+    font-style: normal;
+    line-height: 25px;
+}
+

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Interactive Boids Simulation (Webcam)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* CSS 통합 */
+        body { margin: 0; overflow: hidden; background-color: #838383; color: #fff; font-family: Arial, sans-serif; }
+        #webgl-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* 웹캠 비디오를 화면 우측 하단에 작게 표시 */
+        #webcam-video { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            width: 160px; 
+            height: 120px; 
+            border: 2px solid #fff;
+            z-index: 10; 
+            display: block; 
+            transform: scaleX(-1);
+        }
+        
+        #motion-canvas { display: none; }
+        
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            color: #ccc;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="webgl-container"></div>
+    <video id="webcam-video" autoplay></video>
+    <canvas id="motion-canvas"></canvas>
+    <div id="info">Webcam Status: Loading...</div>
+
+    <script>
+        // 전역 변수 선언 (오류 방지를 위해 변수 선언부를 깔끔하게 유지)
+        const WINDOW_WIDTH = window.innerWidth;
+        const WINDOW_HEIGHT = window.innerHeight;
+
+        const VIDEO_WIDTH = 160; 
+        const VIDEO_HEIGHT = 120;
+        
+        // --- Boids/Agent 설정 조정 ---
+        const PARTICLES_PER_BLOB = 150; 
+        const MAX_SPEED = 2;
+        const MAX_FORCE = 0.05;
+        
+        // 모션 감지 임계값
+        const MOTION_THRESHOLD = 70; 
+        const MIN_BLOB_SIZE = 10; 
+        
+        // **새로운 Boids 규칙: 분리(Separation)**
+        // 뭉침 방지: 같은 군집 내에서 이 거리 이하로 가까워지면 회피
+        const SEPARATION_DISTANCE = 50; 
+        const SEPARATION_STRENGTH = 0.28; // 분리 강도
+
+        // 목표 추종 (사람 따라가기)
+        const FOLLOW_STRENGTH = 0.01; 
+
+        // 군집 간 회피 (타인 경계) - 수치 유지
+        const REPULSION_DISTANCE = 80; 
+        const REPULSION_STRENGTH = 0.8; 
+
+        // 군집 내 응집 (Cohesion) - 뭉침 방지를 위해 강도를 낮춤
+        const COHESION_RADIUS = 100;
+        const COHESION_STRENGTH = 0.005; // 0.01에서 0.005로 절반 감소
+
+        let camera, scene, renderer;
+        let particleGeometry, particleMaterial, particleSystem;
+        let video, videoCanvas, videoContext;
+        let lastFrameData = null; 
+        let infoElement;
+
+        const blobs = []; 
+        const BLOB_COLORS = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+        let nextColorIndex = 0;
+
+
+        // ==========================================================
+        // 1. 초기화 함수 (이전과 동일)
+        // ==========================================================
+
+        function init() {
+            infoElement = document.getElementById('info');
+            scene = new THREE.Scene();
+            
+            camera = new THREE.PerspectiveCamera(60, WINDOW_WIDTH / WINDOW_HEIGHT, 1, 1000);
+            camera.position.z = 400; 
+            camera.position.y = 50;  
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+            document.getElementById('webgl-container').appendChild(renderer.domElement);
+
+            particleGeometry = new THREE.BufferGeometry();
+            const maxParticles = 10 * PARTICLES_PER_BLOB; 
+            const positions = new Float32Array(maxParticles * 3); 
+            const colors = new Float32Array(maxParticles * 3); 
+            
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+
+            particleMaterial = new THREE.PointsMaterial({
+                size: 8, 
+                vertexColors: true, 
+                blending: THREE.AdditiveBlending, 
+                transparent: true,
+                opacity: 0.8
+            });
+
+            particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            particleSystem.frustumCulled = false;
+            scene.add(particleSystem);
+
+
+            video = document.getElementById('webcam-video');
+            videoCanvas = document.getElementById('motion-canvas');
+            videoCanvas.width = VIDEO_WIDTH;
+            videoCanvas.height = VIDEO_HEIGHT;
+            videoContext = videoCanvas.getContext('2d');
+
+            startWebcam();
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function startWebcam() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const constraints = { 
+                    video: { 
+                        width: { exact: VIDEO_WIDTH }, 
+                        height: { exact: VIDEO_HEIGHT },
+                        facingMode: "environment"
+                    } 
+                };
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        video.srcObject = stream;
+                        video.onloadedmetadata = () => {
+                            video.play();
+                            infoElement.textContent = "Webcam Status: Active";
+                            animate(); 
+                        };
+                    })
+                    .catch(err => {
+                        console.error("웹캠 접근 오류: ", err);
+                        infoElement.textContent = "Webcam Status: Error - Check Permissions";
+                    });
+            } else {
+                infoElement.textContent = "Webcam Status: Browser Not Supported";
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==========================================================
+        // 2. 모션 감지 및 군집(Blob) 관리 (이전과 동일)
+        // ==========================================================
+        
+        function detectMotion() {
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            videoContext.drawImage(video, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+            const currentFrame = videoContext.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+            const currentData = currentFrame.data;
+            
+            if (!lastFrameData) {
+                lastFrameData = new Uint8ClampedArray(currentData);
+                return;
+            }
+
+            const pixelDiff = [];
+            
+            for (let i = 0; i < currentData.length; i += 4) {
+                const avgCurrent = (currentData[i] + currentData[i + 1] + currentData[i + 2]) / 3;
+                const isDark = avgCurrent < MOTION_THRESHOLD; 
+                
+                if (isDark) {
+                    const x = (i / 4) % VIDEO_WIDTH;
+                    const y = Math.floor((i / 4) / VIDEO_WIDTH);
+                    pixelDiff.push({ x: x, y: y });
+                }
+            }
+
+            lastFrameData.set(currentData);
+            const detectedBlobs = simpleClustering(pixelDiff);
+            updateBlobs(detectedBlobs);
+        }
+        
+        function simpleClustering(pixels) {
+            if (pixels.length < MIN_BLOB_SIZE) return []; 
+            
+            let sumX = 0, sumY = 0;
+            pixels.forEach(p => { sumX += p.x; sumY += p.y; });
+            
+            const centerX = sumX / pixels.length;
+            const centerY = sumY / pixels.length;
+
+            const targetX = (centerX / VIDEO_WIDTH) * 500 - 250; 
+            const targetY = -(centerY / VIDEO_HEIGHT) * 375 + 187.5; 
+
+            return [{ x: targetX, y: targetY }];
+        }
+        
+        function updateBlobs(detectedCenters) {
+            blobs.forEach(blob => blob.matched = false);
+
+            detectedCenters.forEach(center => {
+                let bestMatch = null;
+                let minDistance = Infinity;
+                
+                for (const blob of blobs) {
+                    const dx = blob.targetX - center.x;
+                    const dy = blob.targetY - center.y;
+                    const distSq = dx * dx + dy * dy;
+
+                    if (distSq < 150 * 150 && !blob.matched) { 
+                        if (distSq < minDistance) {
+                            minDistance = distSq;
+                            bestMatch = blob;
+                        }
+                    }
+                }
+
+                if (bestMatch) {
+                    bestMatch.targetX = center.x;
+                    bestMatch.targetY = center.y;
+                    bestMatch.matched = true;
+                    bestMatch.active = true;
+                } else {
+                    createBlob(center.x, center.y);
+                }
+            });
+
+            for (let i = blobs.length - 1; i >= 0; i--) {
+                const blob = blobs[i];
+                if (!blob.matched) {
+                    blob.active = false;
+                }
+            }
+            updateParticleGeometry();
+        }
+        
+        function createBlob(x, y) {
+            const newColor = BLOB_COLORS[nextColorIndex];
+            nextColorIndex = (nextColorIndex + 1) % BLOB_COLORS.length;
+            
+            const colorObj = new THREE.Color(newColor);
+            const agents = [];
+
+            for (let i = 0; i < PARTICLES_PER_BLOB; i++) {
+                const agent = {
+                    // 초기 위치 분산을 더 넓게 줌
+                    position: new THREE.Vector3(x + Math.random() * 40 - 20, y + Math.random() * 40 - 20, 0), 
+                    velocity: new THREE.Vector3(Math.random() * MAX_SPEED - MAX_SPEED / 2, Math.random() * MAX_SPEED - MAX_SPEED / 2, 0),
+                    color: colorObj,
+                    blob: null // 이따가 할당
+                };
+                agents.push(agent);
+            }
+
+            const newBlob = {
+                id: Date.now(),
+                color: newColor,
+                targetX: x,
+                targetY: y,
+                agents: agents,
+                active: true,
+                colorObj: colorObj
+            };
+            
+            // Agent에 부모 Blob 참조 할당
+            agents.forEach(agent => agent.blob = newBlob);
+
+            blobs.push(newBlob);
+        }
+
+        // ==========================================================
+        // 3. 파티클(Agent) 시뮬레이션 (Boids Separation 추가 및 조정)
+        // ==========================================================
+
+        function updateAgents() {
+            const positions = particleGeometry.attributes.position.array;
+            const colors = particleGeometry.attributes.color.array;
+            let particleIndex = 0;
+
+            blobs.forEach(currentBlob => {
+                if (!currentBlob.active) return; 
+
+                const target = new THREE.Vector3(currentBlob.targetX, currentBlob.targetY, 0);
+                
+                // 응집력 계산을 위한 중심점 사전 계산
+                let centerOfMass = new THREE.Vector3();
+                currentBlob.agents.forEach(agent => centerOfMass.add(agent.position));
+                centerOfMass.divideScalar(currentBlob.agents.length);
+                
+                currentBlob.agents.forEach(agent => {
+                    let force = new THREE.Vector3();
+
+                    // --- A. 군집 내 분리 (Separation) ---
+                    // 같은 군집 내에서 너무 가까운 파티클로부터 벗어나게 함 (뭉침 방지 핵심)
+                    let separationForce = new THREE.Vector3();
+                    let neighborCount = 0;
+                    
+                    currentBlob.agents.forEach(otherAgent => {
+                        if (agent !== otherAgent) {
+                            const dist = agent.position.distanceTo(otherAgent.position);
+                            
+                            if (dist < SEPARATION_DISTANCE) {
+                                // 가까울수록 강하게 밀어냄
+                                const direction = agent.position.clone().sub(otherAgent.position).normalize();
+                                const strength = (1 - dist / SEPARATION_DISTANCE) * SEPARATION_STRENGTH;
+                                separationForce.add(direction.multiplyScalar(strength));
+                                neighborCount++;
+                            }
+                        }
+                    });
+
+                    // 분리 힘 적용
+                    if (neighborCount > 0) {
+                        separationForce.divideScalar(neighborCount);
+                    }
+                    force.add(separationForce);
+                    
+                    
+                    // --- B. 군집 내 응집 (Cohesion) ---
+                    // 뭉침 방지를 위해 강도를 낮춤 (COHESION_STRENGTH = 0.005)
+                    const cohesionForce = centerOfMass.clone().sub(agent.position);
+                    cohesionForce.multiplyScalar(COHESION_STRENGTH);
+                    force.add(cohesionForce);
+                    
+                    // --- C. 목표 추종 (사람의 움직임을 따라감) ---
+                    const followForce = target.clone().sub(agent.position);
+                    followForce.multiplyScalar(FOLLOW_STRENGTH);
+                    force.add(followForce);
+
+
+                    // --- D. 군집 간 회피 (Repulsion - 타인 경계) ---
+                    let repulsionForce = new THREE.Vector3();
+                    blobs.forEach(otherBlob => {
+                        if (currentBlob.id !== otherBlob.id && otherBlob.active) {
+                            const otherCenter = new THREE.Vector3(otherBlob.targetX, otherBlob.targetY, 0);
+                            const dist = agent.position.distanceTo(otherCenter);
+                            
+                            if (dist < REPULSION_DISTANCE) {
+                                const direction = agent.position.clone().sub(otherCenter).normalize();
+                                const strength = (1 - dist / REPULSION_DISTANCE) * REPULSION_STRENGTH; 
+                                repulsionForce.add(direction.multiplyScalar(strength));
+                            }
+                        }
+                    });
+                    force.add(repulsionForce);
+
+                    // --- E. 속도 및 힘 적용 ---
+                    agent.velocity.add(force);
+                    
+                    // 속도 제한 (MAX_SPEED)
+                    if (agent.velocity.length() > MAX_SPEED) {
+                        agent.velocity.setLength(MAX_SPEED);
+                    }
+                    
+                    agent.position.add(agent.velocity);
+                    
+                    // three.js Geometry 업데이트
+                    const i = particleIndex;
+                    positions[i * 3] = agent.position.x;
+                    positions[i * 3 + 1] = agent.position.y;
+                    positions[i * 3 + 2] = agent.position.z;
+
+                    colors[i * 3] = agent.color.r;
+                    colors[i * 3 + 1] = agent.color.g;
+                    colors[i * 3 + 2] = agent.color.b;
+                    
+                    particleIndex++;
+                });
+            });
+
+            particleGeometry.setDrawRange(0, particleIndex); 
+            particleGeometry.attributes.position.needsUpdate = true;
+            particleGeometry.attributes.color.needsUpdate = true;
+        }
+        
+        function updateParticleGeometry() {
+            const totalParticles = blobs.reduce((sum, blob) => sum + (blob.active ? blob.agents.length : 0), 0);
+            
+            const currentSize = particleGeometry.attributes.position.array.length / 3;
+            if (totalParticles > currentSize) {
+                const newMaxParticles = Math.ceil(totalParticles / PARTICLES_PER_BLOB + 1) * PARTICLES_PER_BLOB;
+                const positions = new Float32Array(newMaxParticles * 3);
+                const colors = new Float32Array(newMaxParticles * 3);
+                
+                const oldPositions = particleGeometry.attributes.position.array;
+                const oldColors = particleGeometry.attributes.color.array;
+                positions.set(oldPositions.slice(0, oldPositions.length));
+                colors.set(oldColors.slice(0, oldColors.length));
+
+                particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+                particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+            }
+        }
+
+        // ==========================================================
+        // 4. 애니메이션 루프 및 실행
+        // ==========================================================
+
+        function animate() {
+            requestAnimationFrame(animate);
+            detectMotion();
+            updateAgents();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>

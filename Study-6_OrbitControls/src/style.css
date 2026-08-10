@@ -1,0 +1,13 @@
+* {
+    outline: none;
+    margin: 0;
+}
+body {
+    overflow: hidden;   /*스크롤 바 안보이게 (보이게하려면: visible) */
+    background-color: #000;
+    color: #ffffff;
+}
+
+a {
+    color: #2ea69b;
+}
