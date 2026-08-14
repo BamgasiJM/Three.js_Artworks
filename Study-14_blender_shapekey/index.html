@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShapeKey Flower Field</title>
+    <link rel="stylesheet" href="./style.css" />
+    <!-- Import Maps 로 Three.js 불러오기 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.185.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.185.1/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="hud">
+      <div><span>morph</span><b id="hudMorph">-</b></div>
+      <div><span>mouse</span><b id="hudMouse">-</b></div>
+      <div><span>blooming</span><b id="hudBloom">-</b></div>
+      <div><span>max open</span><b id="hudMax">-</b></div>
+    </div>
+  </body>
+  <script type="module" src="./shapekey.js"></script>
+</html>
