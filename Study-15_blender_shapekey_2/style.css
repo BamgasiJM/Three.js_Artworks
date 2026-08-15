@@ -1,0 +1,44 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+  background: #151520;
+}
+
+canvas {
+  display: block;
+}
+
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  padding: 12px 14px;
+  border: 1px solid rgba(102, 204, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(10, 10, 20, 0.75);
+  color: #cfe8ff;
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  user-select: none;
+}
+
+#hud div {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+#hud span {
+  color: #6f8398;
+}
+
+#hud b {
+  font-weight: 600;
+  color: #66ccff;
+}
