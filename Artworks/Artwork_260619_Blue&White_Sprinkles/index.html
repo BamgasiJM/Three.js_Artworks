@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>WebGPU Cubes</title>
+        <style>
+            body {
+                margin: 0;
+                overflow: hidden;
+                background: #000;
+            }
+        </style>
+
+        <!-- ✅ 이 importmap 추가 -->
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+                    "three/webgpu": "https://unpkg.com/three@0.170.0/build/three.webgpu.js",
+                    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

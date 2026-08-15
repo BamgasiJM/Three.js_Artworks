@@ -1,0 +1,151 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+  background: #151520;
+}
+
+canvas {
+  display: block;
+  transition: filter 0.8s ease-out;
+}
+
+canvas.blurred {
+  filter: blur(4px);
+}
+
+#titleOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 5, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  opacity: 1;
+  transition: opacity 0.8s ease-out;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#titleOverlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#titleContent {
+  text-align: center;
+  color: #ffffff;
+  user-select: none;
+  animation: fadeInScale 0.6s ease-out;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+#titleContent h1 {
+  font-size: 7rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  margin-bottom: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+#titleContent h2 {
+  font-size: 4rem;
+  font-weight: 400;
+  margin-bottom: 2rem;
+  font-family: "Noto Serif JP", "游明朝", serif;
+  letter-spacing: 0.1em;
+}
+
+#titleContent p {
+  font-size: 1.3rem;
+  color: #999999;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: 0.05em;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+#topGuide {
+  position: fixed;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: 70%;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.8s ease-out 0.3s;
+}
+
+#topGuide.visible {
+  opacity: 1;
+}
+
+#topGuide h3 {
+  color: #cccccc;
+  font-size: 2.5rem;
+  font-family: "Noto Serif JP", "游明朝", serif;
+  margin-bottom: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+}
+
+#topGuide p {
+  color: #aaaaaa;
+  font-size: 1.25rem;
+  font-family: "Noto Serif KR", serif;
+  line-height: 1.8;
+  letter-spacing: 0.03em;
+  font-weight: 400;
+}
+
+#credit {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: none;
+  user-select: none;
+}
+
+#credit p {
+  color: #666666;
+  font-size: 0.85rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+}

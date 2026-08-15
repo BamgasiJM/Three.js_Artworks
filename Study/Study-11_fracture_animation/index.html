@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Basic GLB Loader</title>
+    <link rel="stylesheet" href="./style.css" />
+    <!-- Import Maps 로 Three.js 불러오기 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.182.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.182.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body></body>
+  <script type="module" src="./glb_animation.js"></script>
+</html>
