@@ -8,7 +8,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 // ============================================================
 // 튜닝 파라미터
-// ===========================================================
+// ============================================================
 const FLOWER_COUNT = 1200; // 꽃 개수
 const PETALS_PER_FLOWER = 6; // 꽃 1개를 이루는 petal 개수 (leaf.glb 를 원형으로 복제)
 const INSTANCE_COUNT = FLOWER_COUNT * PETALS_PER_FLOWER; // InstancedMesh 총 인스턴스 개수
@@ -78,7 +78,7 @@ dirLight.position.set(5, 10, 5);
 scene.add(dirLight);
 
 // ============================================================
-// 2-b. Postprocessing — Bloom
+// 3. Postprocessing — Bloom
 // ============================================================
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -96,14 +96,14 @@ composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
 // ============================================================
-// 3. Controls
+// 4. Controls
 // ============================================================
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI / 2.05; // 바닥 아래로 내려가지 않도록
 
 // ============================================================
-// 4. 마우스 → 지면(y=0) 월드 좌표
+// 5. 마우스 → 지면(y=0) 월드 좌표
 // ============================================================
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2(999, 999); // 화면 밖에서 시작
@@ -136,7 +136,7 @@ window.addEventListener("touchend", () => {
 });
 
 // ============================================================
-// 5. Title Overlay
+// 6. Title Overlay
 // ============================================================
 const titleOverlay = document.getElementById("titleOverlay");
 const topGuide = document.getElementById("topGuide");
@@ -164,11 +164,10 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ============================================================
-// 6. GLB 로드 → InstancedMesh 구성
+// 7. GLB 로드 → InstancedMesh 구성
 // ============================================================
-// 인스턴스별 morph 가중치를 setMorphAt 에 넘기기 위한 임시 객체.
-// setMorphAt(index, object) 는 object.morphTargetInfluences 를 읽으므로
-// 실제 Mesh 가 아니어도 해당 프로퍼티만 있으면 된다.
+// setMorphAt(index, object) 는 object.morphTargetInfluences 만 읽으므로,
+// 실제 Mesh 가 아닌 이 임시 객체로 인스턴스별 morph 가중치를 넘긴다.
 const morphCarrier = { morphTargetInfluences: null };
 
 let flowers = null; // InstancedMesh
@@ -178,18 +177,10 @@ let morphCount = 0;
 let glowAttr = null; // InstancedBufferAttribute, 셰이더로 보내는 개화도
 
 // ------------------------------------------------------------
-// Blender 머티리얼을 유지한 채 emissive 만 인스턴스별로 제어한다.
-//
-// MeshStandardMaterial 의 프래그먼트 셰이더에는
-//   vec3 totalEmissiveRadiance = emissive;   // ← emissive 는 uniform (전 인스턴스 공유)
-//   #include <emissivemap_fragment>
-//   ...
-//   vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;
-// 라는 흐름이 있다.
-//
-// emissive 가 uniform 이라 인스턴스별로 다르게 줄 수 없으므로,
-// emissivemap_fragment 직후에 "인스턴스별 발광"을 더하는 한 줄을 끼워 넣는다.
-// baseColor/normalMap 등 원본 로직은 손대지 않으므로 Blender 룩이 유지된다.
+// emissive 는 MeshStandardMaterial 셰이더에서 uniform (전 인스턴스 공유)이라
+// 인스턴스별로 다르게 줄 수 없다. emissivemap_fragment 직후에 "인스턴스별
+// 발광"을 더하는 한 줄만 끼워 넣어, baseColor/normalMap 등 원본 로직과
+// Blender 룩은 그대로 유지한다.
 // ------------------------------------------------------------
 function patchMaterialForGlow(mat) {
   mat.onBeforeCompile = (shader) => {
@@ -233,8 +224,7 @@ function patchMaterialForGlow(mat) {
     mat.userData.shader = shader;
   };
 
-  // onBeforeCompile 을 바꿨으면 캐시 키도 바꿔줘야 한다.
-  // 같은 프로그램으로 오인해서 패치 전 셰이더를 재사용하는 것을 막는다.
+  // 캐시 키를 바꿔 패치 전 셰이더가 재사용되는 것을 막는다
   mat.customProgramCacheKey = () => "flowerGlow";
 }
 
@@ -271,8 +261,7 @@ loader.load(
     // --- 머티리얼에 발광 훅을 심는다 (원본 텍스처/색은 그대로) ---
     patchMaterialForGlow(material);
 
-    // --- InstancedMesh 생성 ---
-    // petal 하나(leaf.glb)를 꽃 1개당 PETALS_PER_FLOWER 개 복제해 원형으로 배치한다.
+    // petal(leaf.glb) 하나를 꽃 1개당 PETALS_PER_FLOWER 개 복제해 원형으로 배치
     flowers = new THREE.InstancedMesh(geometry, material, INSTANCE_COUNT);
     flowers.frustumCulled = false; // 인스턴스가 넓게 퍼지므로 컬링 비활성
 
@@ -280,8 +269,7 @@ loader.load(
     basePos = new Float32Array(FLOWER_COUNT * 2);
     morphCarrier.morphTargetInfluences = new Float32Array(morphCount);
 
-    // 셰이더가 읽을 인스턴스별 발광도.
-    // openAmount 와 같은 값이지만, 이쪽은 GPU 로 올라가는 버퍼다.
+    // 셰이더가 읽는 인스턴스별 발광도 — openAmount 와 같은 값을 GPU 버퍼로 올린 것
     glowAttr = new THREE.InstancedBufferAttribute(
       new Float32Array(INSTANCE_COUNT),
       1,
@@ -297,7 +285,7 @@ loader.load(
       const x = (Math.random() - 0.5) * FIELD;
       const z = (Math.random() - 0.5) * FIELD;
       const baseRotY = Math.random() * Math.PI * 2;
-      // SCALE 을 중심으로 ±SCALE_VARIANCE 만큼 무작위 편차 (꽃 단위로 통일)
+      // 꽃 단위로 통일 (petal 마다 다르지 않음)
       const s = SCALE * (1 + (Math.random() * 2 - 1) * SCALE_VARIANCE);
 
       basePos[i * 2] = x;
@@ -342,7 +330,7 @@ loader.load(
 );
 
 // ============================================================
-// 6-b. 파티클 — 개화 시 위로 솟아오르는 이펙트
+// 8. 파티클 — 개화 시 위로 솟아오르는 이펙트
 // ============================================================
 // flowers 로드 여부와 무관하게 항상 존재한다. flowers 가 없으면 스폰이 안 될 뿐이다.
 const particleGeometry = new THREE.BufferGeometry();
@@ -459,7 +447,7 @@ function updateParticles(dt) {
 
 
 // ============================================================
-// 8. Resize
+// 9. Resize
 // ============================================================
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -473,7 +461,7 @@ window.addEventListener("resize", () => {
 });
 
 // ============================================================
-// 9. Animate
+// 10. Animate
 // ============================================================
 const clock = new THREE.Clock();
 let frame = 0;
