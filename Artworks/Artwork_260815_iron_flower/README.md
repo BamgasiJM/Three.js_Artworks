@@ -30,29 +30,20 @@
 
 ## 핵심 구현
 
-### 1. InstancedMesh + Morph Target으로 7,200장의 꽃잎을 한 번에
+`main.js`는 위에서부터 아래로 10개 섹션(1. Scene/Camera/Renderer → 10. Animate)으로 번호가 매겨져 있다. 그 순서 그대로, 각 파트에서 실제로 어떤 일이 일어나는지 자세히 정리한 코드 워크스루는 **[IMPLEMENTATION.md](./IMPLEMENTATION.md)** 참고. 요약하면:
 
-꽃 한 송이는 `leaf.glb` 하나를 Y축 기준으로 균등 회전시켜 6장을 원형 배치한 것이다. 1,200송이 전체를 `InstancedMesh` 하나로 그려서 드로우콜을 1회로 유지한다.
+- **1. Scene/Camera/Renderer** — `ACESFilmicToneMapping`으로 1을 넘는 발광 값(2.0)도 하이라이트가 뭉개지지 않게 압축.
+- **3. Postprocessing** — `EffectComposer`로 RenderPass(일반 렌더) → UnrealBloomPass(threshold 이상 밝기 추출·블러·가산 합성) → OutputPass(톤매핑+sRGB 변환) 체인을 구성.
+- **4. Controls** — `maxPolarAngle`로 카메라가 지면 아래로 내려가는 것만 막고, azimuth(좌우 회전)는 기본값 그대로 열어둠.
+- **5. Raycasting** — 마우스 NDC 좌표 → `raycaster.ray.intersectPlane`으로 y=0 평면 위 월드 좌표(`mouseWorld`) 변환.
+- **7. GLB → InstancedMesh** — Shape Key(morph target) 유무로 "닫힘/핀 상태"를 감지하고, `InstancedMesh` + 인스턴스별 `morphTexture`로 7,200장을 1회 드로우콜에 배치.
+- **8. 파티클** — 고정 크기 풀 + 링버퍼로 GC 없이 생성·소멸을 순환시키고, 커스텀 셰이더로 원근 보정 크기와 원형 가산 발광 스프라이트를 그림.
+- **9. Resize** — 카메라뿐 아니라 `composer`/`bloomPass`의 내부 렌더 타겟도 함께 리사이즈해야 번짐이 어긋나지 않음.
+- **10. Animate** — 거리→smoothstep→지수감쇠(`damp`) 순으로 목표 개화도를 부드럽게 추적하고, 그 값 하나로 morph와 emissive를 동시에 구동.
 
-```javascript
-flowers = new THREE.InstancedMesh(geometry, material, INSTANCE_COUNT); // 1200 × 6
-```
+아래는 그중 두 가지 트러블슈팅 포인트만 짧게 짚는다.
 
-개화 애니메이션은 별도 스켈레톤 없이 Blender Shape Key(모프 타겟)로 만들어졌고, 매 프레임 `InstancedMesh.setMorphAt(index, carrier)`로 인스턴스별 모프 가중치(0=오므림 ~ 1=만개)를 밀어 넣는다. `setMorphAt`은 `object.morphTargetInfluences` 프로퍼티만 읽기 때문에, 실제 Mesh가 아닌 `{ morphTargetInfluences }` 형태의 가벼운 캐리어 객체 하나로 충분하다.
-
-### 2. 마우스 → 지면 좌표 → 개화도
-
-마우스 스크린 좌표를 Raycaster로 y=0 평면에 투영해 월드 좌표(`mouseWorld`)를 구하고, 각 꽃과의 거리(`dist`)로 목표 개화도를 계산한다.
-
-```javascript
-const t = clamp(1 - dist / RADIUS, 0, 1);
-const target = t * t * (3 - 2 * t);           // smoothstep — 경계를 부드럽게
-openAmount[i] = damp(openAmount[i], target, DAMPING, dt); // 프레임독립 지수보간
-```
-
-`smoothstep`으로 반경 경계에서 뚝 끊기지 않게 하고, `MathUtils.damp`로 프레임레이트에 무관하게 부드럽게 열리고 닫히도록 했다.
-
-### 3. 인스턴스별 발광 — emissive는 uniform이라는 함정
+### 인스턴스별 발광 — emissive는 uniform이라는 함정
 
 `MeshStandardMaterial`의 `emissive`는 셰이더에서 **uniform**, 즉 모든 인스턴스가 값을 공유한다. 인스턴스마다 다른 밝기로 빛나게 하려면 머티리얼 자체를 새로 만들 수 없으니, `onBeforeCompile`로 셰이더 소스에 인스턴스 attribute(`aGlow`)를 끼워 넣어 `emissivemap_fragment` 직후에 발광을 더하는 방식을 택했다.
 
@@ -63,21 +54,19 @@ totalEmissiveRadiance += uGlowColor * uGlowStrength * glow;
 
 이렇게 하면 Blender에서 만든 baseColor/normalMap 등 원본 룩은 그대로 유지한 채 개화도에 따른 발광만 추가할 수 있다. 단, `onBeforeCompile`을 바꾼 머티리얼은 `customProgramCacheKey`도 함께 바꿔줘야 이전(패치 전) 셰이더 프로그램이 캐시에서 재사용되는 문제를 피할 수 있다.
 
-### 4. Bloom 임계값 역산
+### Bloom 임계값 역산
 
 `UnrealBloomPass`는 특정 밝기(threshold) 이상만 번지게 하는데, 이 값을 감으로 잡으면 조명 받은 표면까지 새어 번지거나 반대로 꽃이 전혀 빛나지 않는다. 현재 `GLOW_COLOR`(시안) × `GLOW_STRENGTH`(2.0) 조합에서 만개 시 최대 luminance를 역산(약 1.07)해 `BLOOM_THRESHOLD`를 그보다 낮게 고정했다 — 파라미터 하나를 바꾸면 이 계산도 같이 맞춰야 한다.
-
-### 5. 파티클 — 고정 크기 링버퍼
-
-개화도가 임계치를 넘은 꽃에서 확률적으로(`PARTICLE_SPAWN_RATE * dt`) 파티클을 생성한다. `PARTICLE_MAX`(500)개짜리 배열을 링버퍼로 순환시켜, GC 없이 오래된 슬롯을 덮어쓰는 방식으로 개수를 무한정 늘리지 않고 관리한다. 파티클은 `THREE.Points` + 커스텀 셰이더로, 화면상 크기가 원근에 따라 일정하게 보이도록 `gl_PointSize`를 카메라 거리로 보정했다.
 
 ## 파일 구조
 
 ```
 Artwork_260815_iron_flower/
-├── index.html          # 타이틀/가이드 오버레이 마크업, import map
-├── style.css           # 오버레이 UI, 블러 트랜지션
-├── main.js             # Scene 구성 · 인터랙션 · 셰이더 패치 · 애니메이션 루프
+├── README.md            # 개요, 사용자 흐름, 기술 스택 (이 문서)
+├── IMPLEMENTATION.md    # main.js 섹션 순서대로 정리한 상세 구현 워크스루
+├── index.html           # 타이틀/가이드 오버레이 마크업, import map
+├── style.css            # 오버레이 UI, 블러 트랜지션
+├── main.js              # Scene 구성 · 인터랙션 · 셰이더 패치 · 애니메이션 루프
 └── assets/
     ├── MODELING.blend       # 원본 Blender 파일 (Shape Key 포함)
     └── leaf.glb             # export된 꽃잎 메쉬 + 모프 타겟
