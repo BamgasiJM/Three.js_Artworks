@@ -13,7 +13,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000,
 );
-camera.position.set(0, 1.5, 3);
+camera.position.set(0, 1.5, 1);
 
 // 3. Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -36,7 +36,9 @@ controls.enableDamping = true;
 // 6. GLB Loader
   const loader = new GLTFLoader();
   loader.load(
-    "./assets/2CylinderEngine.glb", // 🔹 GLB 파일 경로
+    // "./assets/2CylinderEngine.glb", // 🔹 GLB 파일 경로
+    // "./assets/CarbonFibre.glb", // 🔹 GLB 파일 경로
+    "./assets/MosquitoInAmber.glb", // 🔹 GLB 파일 경로
     (gltf) => {
       const model = gltf.scene;
       scene.add(model);
